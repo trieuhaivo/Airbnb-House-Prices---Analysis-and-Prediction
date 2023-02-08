@@ -1,0 +1,927 @@
+---
+title: "Final Project - Airbnb Price Prediction"
+author: "Trieu Vo"
+date: "21/11/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Final Project - Airbnb Price Prediction
+
+## I. PROJECT INTRODUCTION
+
+### 1.	Name of the project
+
+Final Project - Airbnb Price Prediction
+
+### 2.	Name of students
+
+Trieu Vo
+
+### 3.	Start Date
+
+20/11/2021
+
+## II. PROBLEM UNDERSTANDING
+
+### 1.	Business Problem
+
+As more people choose Airbnb as their primary accommodation provider, Airbnb has effectively challenged the traditional hotel business. Since its establishment in 2008, Airbnb has experienced tremendous development, with the number of rentals listed on its website increasing at an exponential rate each year. We'll utilize the Airbnb dataset to identify significant trends in customer interest and predict the price and rating of various destinations. We can then provide solutions to business difficulties.
+
+### 2.	Questions
+
+What can we learn about different hosts and areas?
+How to predict the price for each neighborhood using listing descriptions?
+What can we learn from predictions?
+Can we find out how many feature that affected the price?
+Can we uncover trends in reviews of Airbnb visitors to different locations?
+
+## III. DATA UNDERSTANDING
+
+### 1.	Data Source
+
+The Inside Airbnb dataset contains approximately 1.2 million listings from various countries across the world. It also has 84 distinct listing characteristics.
+
+In this project, I use the dataset of European listings in The Inside Airbnb. It contains 213,751 listings and 27 useful features.
+
+### 2.	Number of observations
+
+213,751
+
+### 3.	Number of features, meaning of features (data dictionary)
+
+27
+
+```{r}
+######### Data Dictionary #########
+
+# There are 27 columns in this dataset and their description are as follows.
+
+# accommodates: The maximum capacity of the listing
+
+# amenities: 
+
+# availability_365: The availability of the listing 365 days in the future as determined by the calendar. Note a listing may not be available because it has been booked by a guest or blocked by the host.
+
+# bedrooms: The number of bedrooms.
+
+# beds: The number of bed(s)
+
+# calculated_host_listings_count: The number of listings the host has in the current scrape, in the city/region geography.
+
+# host_has_profile_pic: boolean [t=true; f=false]
+
+# host_id: Airbnb's unique identifier for the host/user
+
+# host_identity_verified: boolean [t=true; f=false]
+
+# host_name: Name of the host. Usually just the first name(s).
+
+# host_response_rate: 
+
+# host_response_time: 
+
+# id: Airbnb's unique identifier for the listing
+
+# instant_bookable: [t=true; f=false]. Whether the guest can automatically book the listing without the host requiring to accept their booking request. An indicator of a commercial listing.
+
+# last_review: The date of the last/newest review
+
+# latitude: Uses the World Geodetic System (WGS84) projection for latitude and longitude.
+
+# longitude: Uses the World Geodetic System (WGS84) projection for latitude and longitude.
+
+# maximum_nights: maximum number of night stay for the listing (calendar rules may be different).
+
+# minimum_nights: minimum number of night stay for the listing (calendar rules may be different).
+
+# name: Name of the listing.
+
+# neighbourhood: 
+
+# number_of_reviews: The number of reviews the listing has
+
+# property_type: Self selected property type. Hotels and Bed and Breakfasts are described as such by their hosts in this field
+
+# reviews_per_month: The number of reviews the listing has over the lifetime of the listing
+
+# review_scores_rating: average rating
+
+# room_type: [ Entire home/apt | Private room | Shared room | Hotel ]
+
+######### Target Variable #########
+#
+# price
+#
+```
+
+
+## IV. DATA IMPORT
+
+### 1.	Import libraries
+
+```{r}
+library(janitor)
+library(dplyr)
+library(skimr)
+library(tidyr)
+library(zoo)
+library(tidyverse)
+library(dataPreparation)
+library(effects)
+library(sampling)
+library(caret)
+library(car)
+library(MASS)
+library(stringr)
+library(fastDummies)
+library(randomForest)
+library(class)
+library(C50)
+library(rpart)
+```
+
+
+### 2.	Import data
+
+```{r}
+
+input_df = read.csv("Group4_Europe_Dataset.csv", header = TRUE)
+
+```
+
+```{r}
+indices = sample(nrow(input_df), size = nrow(input_df)*0.35, replace = FALSE)
+
+listing_df = input_df[indices, ]
+```
+
+
+### 3.	View the data
+
+#### a.	Check Shape (rows, columns)
+
+```{r}
+
+dim(listing_df)
+
+```
+
+#### b.	Check Head
+
+```{r}
+head(listing_df, n = 1)
+```
+
+#### c.	Check Columns
+
+```{r}
+names(listing_df)
+```
+
+
+## V. DATA CLEANING
+
+### 1.	Columns
+
+#### a.	Clean column names
+
+```{r}
+listing_df = listing_df %>% 
+  janitor::clean_names()
+```
+
+
+### 2.	Evaluate missing values
+
+#### a.	Evaluate missing values (Number, percentage, summary)
+
+```{r}
+skim(listing_df)
+```
+
+#### b.	Find features that don’t have missing values
+
+```{r}
+names(which(colSums(is.na(listing_df)) == 0))
+```
+
+#### c.	Find features that have missing values
+
+```{r}
+names(which(colSums(is.na(listing_df)) > 0))
+```
+
+#### d.	Remove / Replace missing values by previous values
+
+```{r}
+# listing_df$bedrooms = na.locf(na.locf(listing_df$bedrooms))
+# 
+# listing_df$beds = na.locf(na.locf(listing_df$beds))
+# 
+# listing_df$review_scores_rating = na.locf(na.locf(listing_df$review_scores_rating))
+# 
+# listing_df$reviews_per_month = na.locf(na.locf(listing_df$reviews_per_month))
+```
+
+```{r}
+listing_df = na.omit(listing_df)
+```
+
+```{r}
+names(which(colSums(is.na(listing_df)) > 0))
+```
+
+
+### 3. Summary Stats
+
+```{r}
+skim(listing_df)
+```
+
+### 4. Evaluate categorical features
+
+#### Get categorical columns
+
+```{r}
+categorical_listing_df = select_if(listing_df, is.character)
+
+names(categorical_listing_df)
+
+rm(categorical_listing_df)
+```
+
+
+```{r}
+test_listing_df = data.frame(listing_df)
+```
+
+#### Convert amenities into number
+
+```{r}
+test_listing_df$amenities = lengths(strsplit(test_listing_df$amenities, ","))
+
+head(test_listing_df)
+```
+
+#### Convert host_has_profile_pic to binary values
+
+```{r}
+
+# Evaluate missing values
+summary(as.factor(test_listing_df$host_has_profile_pic))
+
+# Convert missing values to NA
+test_listing_df$host_has_profile_pic[test_listing_df$host_has_profile_pic == ''] = NA
+
+summary(as.factor(test_listing_df$host_has_profile_pic))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(host_has_profile_pic, .direction = c("down"))
+
+summary(as.factor(test_listing_df$host_has_profile_pic))
+
+# Convert 't', 'f' to binary value 0, 1
+test_listing_df$host_has_profile_pic = as.integer(test_listing_df$host_has_profile_pic == "t")
+
+summary(as.factor(test_listing_df$host_has_profile_pic))
+
+head(test_listing_df)
+```
+
+#### Convert host_identity_verified to binary values
+
+```{r}
+# Evaluate missing values
+summary(as.factor(test_listing_df$host_identity_verified))
+
+# Convert missing values to NA
+test_listing_df$host_identity_verified[test_listing_df$host_identity_verified == ''] = NA
+
+summary(as.factor(test_listing_df$host_identity_verified))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(host_identity_verified, .direction = c("down"))
+
+summary(as.factor(test_listing_df$host_identity_verified))
+
+# Convert 't', 'f' to binary value 0, 1
+test_listing_df$host_identity_verified = as.integer(test_listing_df$host_identity_verified == "t")
+
+summary(as.factor(test_listing_df$host_identity_verified))
+
+head(test_listing_df)
+```
+
+#### Convert host_response_rate to number
+
+```{r}
+# Evaluate missing values
+summary(as.factor(test_listing_df$host_response_rate))
+
+# Convert missing values to NA
+test_listing_df$host_response_rate[test_listing_df$host_response_rate == ''] = NA
+
+summary(as.factor(test_listing_df$host_response_rate))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(host_response_rate, .direction = c("down"))
+
+summary(as.factor(test_listing_df$host_response_rate))
+
+# Convert percentage from string to float
+test_listing_df$host_response_rate = as.integer(sub("%", "", test_listing_df$host_response_rate)) / 100
+
+summary(as.factor(test_listing_df$host_response_rate))
+
+head(test_listing_df)
+```
+
+#### Convert host_response_time to numeric feature
+
+```{r}
+# Evaluate missing values
+summary(as.factor(test_listing_df$host_response_time))
+
+# Convert missing values to NA
+test_listing_df$host_response_time[test_listing_df$host_response_time == ''] = NA
+
+summary(as.factor(test_listing_df$host_response_time))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(host_response_time, .direction = c("down"))
+
+summary(as.factor(test_listing_df$host_response_time))
+
+# Convert to factor and then numeric features 1, 2, 3, 4
+test_listing_df$host_response_time = unclass(factor(test_listing_df$host_response_time))
+
+summary(as.factor(test_listing_df$host_response_time))
+
+head(test_listing_df)
+```
+
+
+#### Convert instant_bookable to binary values
+
+```{r}
+
+# Evaluate missing values
+summary(as.factor(test_listing_df$instant_bookable))
+
+# Convert missing values to NA
+test_listing_df$instant_bookable[test_listing_df$instant_bookable == ''] = NA
+
+summary(as.factor(test_listing_df$instant_bookable))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(instant_bookable, .direction = c("down"))
+
+summary(as.factor(test_listing_df$instant_bookable))
+
+# Convert 't', 'f' to binary value 0, 1
+test_listing_df$instant_bookable = as.integer(test_listing_df$instant_bookable == "t")
+
+summary(as.factor(test_listing_df$instant_bookable))
+
+head(test_listing_df)
+```
+
+#### Convert price to number
+
+```{r}
+
+# rm(test_listing_df2)
+
+# Convert price to number
+test_listing_df$price = as.numeric(str_remove(test_listing_df$price, '[$]'))
+
+# Evaluate missing values
+summary(as.factor(test_listing_df$price))
+
+# Convert missing values to NA
+# test_listing_df$price[test_listing_df$price == 'NA\'s'] = NA
+
+summary(as.factor(test_listing_df$price))
+
+# Fill missing values by previous value
+test_listing_df = test_listing_df %>% fill(price, .direction = c("down"))
+
+summary(as.factor(test_listing_df$price))
+
+head(test_listing_df)
+
+```
+
+
+#### Convert room_type using dummy variables
+
+```{r}
+summary(as.factor(test_listing_df$room_type))
+
+test_listing_df = dummy_cols(test_listing_df, select_columns = 'room_type', remove_selected_columns = TRUE)
+
+head(test_listing_df)
+```
+
+#### Clean names of columns
+
+```{r}
+listing_df = test_listing_df
+
+rm(test_listing_df)
+
+# Clean names of columns
+listing_df = listing_df %>% 
+  janitor::clean_names()
+
+# Names of columns
+names(listing_df)
+```
+
+
+### 5.	Evaluate numeric features
+
+#### a.	Count
+
+```{r}
+# Get numeric features
+numeric_listing_df = select_if(listing_df, is.numeric)
+
+# Number of columns
+length(numeric_listing_df)
+
+# Names of columns
+names(numeric_listing_df)
+
+summary(numeric_listing_df)
+```
+
+#### b.	Deal with outliers of all features
+
+```{r}
+
+# test_listing_df = numeric_listing_df
+# 
+# # Number of original observations
+# print(nrow(test_listing_df))
+# 
+# for (i in 1:ncol(test_listing_df))
+# {
+#   Q1 = quantile(test_listing_df[, i], 0.25)
+#   Q3 = quantile(test_listing_df[, i], 0.75)
+#   IQR = Q3 - Q1
+#   
+#   upper_bound = Q3 + 1.5 * IQR
+#   lower_bound = Q1 - 1.5 * IQR
+# 
+#   # Get rows of outliers
+#   outlier_ind = which(test_listing_df[, i] < lower_bound | test_listing_df[, i] > upper_bound)
+#   
+#   # Remove rows that have outliers from the dataset
+#   if (length(outlier_ind) != 0)
+#   {
+#     test_listing_df = test_listing_df[-outlier_ind, ]
+#   }
+#   
+# }
+# 
+# # Number of remaining observations after removing outliers
+# dim(test_listing_df)
+# 
+# numeric_listing_df = test_listing_df
+# 
+# rm(test_listing_df)
+
+```
+
+```{r}
+
+test_listing_df = numeric_listing_df
+
+# Number of original observations
+print(nrow(test_listing_df))
+
+for (i in 1:ncol(test_listing_df))
+{
+
+  lower_bound = quantile(test_listing_df[, i], 0.025)
+
+  upper_bound = quantile(test_listing_df[, i], 0.975)
+
+  # Get rows of outliers
+  outlier_ind = which(test_listing_df[, i] < lower_bound | test_listing_df[, i] > upper_bound)
+
+  # Remove rows that have outliers from the dataset
+  if (length(outlier_ind) != 0)
+  {
+    test_listing_df = test_listing_df[-outlier_ind, ]
+  }
+
+}
+
+# Number of remaining observations after removing outliers
+dim(test_listing_df)
+
+numeric_listing_df = test_listing_df
+
+rm(test_listing_df)
+
+```
+
+
+
+## VII. DATA REDUCTION (FEATURES SELECTION / FEATURES EXTRACTION)
+
+#### All numeric features
+
+```{r}
+length(names(numeric_listing_df))
+
+names(numeric_listing_df)
+```
+
+#### Get only useful numeric features
+
+```{r}
+head(numeric_listing_df)
+```
+
+```{r}
+summary(numeric_listing_df)
+```
+
+```{r}
+
+test_listing_df = numeric_listing_df
+
+# Drop unused columns
+# All observations have host_has_profile_pic = 1, and room_type_shared_room = 0, so I remove it
+test_listing_df = subset(test_listing_df, select = -c(host_has_profile_pic, host_id, id, room_type_hotel_room, room_type_shared_room))
+
+final_listing_df = test_listing_df
+
+rm(test_listing_df)
+
+# Reset row index
+rownames(final_listing_df) = 1:nrow(final_listing_df)
+
+summary(final_listing_df)
+ 
+# head(final_listing_df)
+```
+
+
+## IX. MODELS BUILDING
+
+### 1.	Create training set and test set
+
+```{r}
+# indices: indices of rows that we choose randomly from the data set
+# size: the number of rows we want to pick
+# replace = FALSE: we don't pick again rows that we chose
+
+# Create a training set and test set that has 70% & 30% of the observations in the original data set
+
+indices = sample(nrow(final_listing_df), size = nrow(final_listing_df)*0.7, replace = FALSE)
+
+training_set = final_listing_df[indices, ]
+
+test_set = final_listing_df[-indices, ]
+
+dim(training_set)
+dim(test_set)
+
+```
+
+```{r}
+rm(list = setdiff(ls(), c("test_set", "training_set")))
+```
+
+
+### 2. Separate the target variable in the training set & test set
+
+```{r}
+
+X_train = subset(training_set, select = -c(price))
+y_train = subset(training_set, select = c(price))
+
+X_test = subset(test_set, select = -c(price))
+y_test = subset(test_set, select = c(price))
+
+dim(X_train)
+NROW(y_train)
+
+dim(X_test)
+NROW(y_test)
+```
+
+
+### 3.	Build a GLM based multiple linear regression model to predict the price of listings
+
+#### a. Build
+
+```{r}
+listing_glm <- glm.nb(price ~ accommodates + amenities + availability_365 + bedrooms + beds + calculated_host_listings_count + host_identity_verified + host_response_rate + host_response_time + instant_bookable + latitude + longitude + maximum_nights + minimum_nights + number_of_reviews + review_scores_rating + reviews_per_month + room_type_entire_home_apt + room_type_private_room, data = training_set)
+```
+
+```{r}
+summary(listing_glm)
+```
+
+
+```{r}
+print(listing_glm)
+```
+
+
+```{r}
+plot(listing_glm)
+```
+
+
+#### b.	Predict y_train_pred
+
+
+```{r}
+y_train_pred <- predict(listing_glm, training_set, type = 'response')
+```
+
+```{r}
+mse_training <- mean((training_set$price - y_train_pred)^2)
+mae_training <- caret::MAE(training_set$price, y_train_pred)
+rmse_training <- caret::RMSE(training_set$price, y_train_pred)
+
+cat("MSE: ", mse_training, "\nMAE: ", mae_training, "\nRMSE: ", rmse_training)
+```
+
+R-Squared is a measure in regression problems. It is limited to the range from 0 to 1. If the value of R-Squared is 1, then the model fits the data perfectly. So it's really similar to the measure of accuracy in classification problems.
+
+```{r}
+RSQUARE = function(y_actual,y_predict){cor(y_actual,y_predict)^2}
+
+R2_training = RSQUARE(training_set$price,y_train_pred)
+
+cat("R^2: ", R2_training)
+```
+In the training set, R^2 is 0.22, which is pretty low. The model didn't fit the training data very well.
+
+I visualize the prediction for the first 150 observations in the training set, so that I can get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, training_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for training set")
+lines(x, y_train_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original_price", "predicted_price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+
+#### c. Predict y_test_pred
+
+```{r}
+y_test_pred <- predict(listing_glm, test_set, type = 'response')
+```
+
+```{r}
+mse_test <- mean((test_set$price - y_test_pred)^2)
+mae_test <- caret::MAE(test_set$price, y_test_pred)
+rmse_test <- caret::RMSE(test_set$price, y_test_pred)
+
+cat("MSE: ", mse_test, "\nMAE: ", mae_test, "\nRMSE: ", rmse_test)
+```
+
+R-Squared is a measure in regression problems. It is limited to the range from 0 to 1. If the value of R-Squared is 1, then the model fits the data perfectly. So it's really similar to the measure of accuracy in classification problems.
+
+```{r}
+R2_test = RSQUARE(test_set$price, y_test_pred)
+
+cat("R^2: ", R2_test)
+```
+In the test set, R^2 is 0.22, which is pretty low.
+
+I visualize the prediction for the first 150 observations in the test set, so that I can get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, test_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for test set")
+lines(x, y_test_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original_price", "predicted_price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+
+### 4. Build a Decision Tree regression model to predict the price of listings
+
+```{r}
+listing_DTree = rpart(price ~ accommodates + amenities + availability_365 + bedrooms + beds + calculated_host_listings_count + host_identity_verified + host_response_rate + host_response_time + instant_bookable + latitude + longitude + maximum_nights + minimum_nights + number_of_reviews + review_scores_rating + reviews_per_month + room_type_entire_home_apt + room_type_private_room, data = training_set, method = "anova")
+```
+
+```{r}
+summary(listing_DTree)
+```
+
+```{r}
+print(listing_DTree)
+```
+
+
+```{r}
+plot(listing_DTree)
+```
+
+#### b.	Predict y_train_pred
+
+
+```{r}
+y_train_pred <- predict(listing_DTree, training_set, method = "anova")
+```
+
+```{r}
+mse_training <- mean((training_set$price - y_train_pred)^2)
+mae_training <- caret::MAE(training_set$price, y_train_pred)
+rmse_training <- caret::RMSE(training_set$price, y_train_pred)
+
+cat("MSE: ", mse_training, "\nMAE: ", mae_training, "\nRMSE: ", rmse_training)
+```
+
+```{r}
+RSQUARE = function(y_actual,y_predict){cor(y_actual,y_predict)^2}
+
+R2_training = RSQUARE(training_set$price,y_train_pred)
+
+cat("R^2: ", R2_training)
+```
+In the training set, R^2 is about 0.3, which is higher than the result of GLM (0.22). But it's still low.
+
+I visualize the prediction for the first 150 observations in the training set, so that I can get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, training_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for training set")
+lines(x, y_train_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original_price", "predicted_price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+
+#### c. Predict y_test_pred
+
+```{r}
+y_test_pred <- predict(listing_DTree, test_set, method = "anova")
+```
+
+```{r}
+mse_test <- mean((test_set$price - y_test_pred)^2)
+mae_test <- caret::MAE(test_set$price, y_test_pred)
+rmse_test <- caret::RMSE(test_set$price, y_test_pred)
+
+cat("MSE: ", mse_test, "\nMAE: ", mae_test, "\nRMSE: ", rmse_test)
+```
+
+```{r}
+R2_test = RSQUARE(test_set$price, y_test_pred)
+
+cat("R^2: ", R2_test)
+```
+
+In the test set, R^2 is about 0.3, which is higher than the result of GLM (0.22). It's an acceptable result. But I want it to be higher.
+
+I visualize the prediction for the first 150 observations in the test set, so that I can get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, test_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for test set")
+lines(x, y_test_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original_price", "predicted_price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+### 5. Build the Random Forest regression model to predict the price of listings
+
+At first I try to generate 500 trees in the Random Forest. But my laptop ran out of memory and got blue screen error. Even though my laptop has 16GB of RAM it still can't make many trees.
+
+So I tried 100, 50, 10, 5 trees in the Random Forest to avoid memory overflow. And it took me 30 minutes to generate 5 trees to train the model.
+
+```{r}
+listing_RForest = randomForest(price ~ accommodates + amenities + availability_365 + bedrooms + beds + calculated_host_listings_count + host_identity_verified + host_response_rate + host_response_time + instant_bookable + latitude + longitude + maximum_nights + minimum_nights + number_of_reviews + review_scores_rating + reviews_per_month + room_type_entire_home_apt + room_type_private_room, data = training_set, ntree = 5, importance = TRUE, na.action = na.omit)
+```
+
+```{r}
+summary(listing_RForest)
+```
+
+```{r}
+print(listing_RForest)
+```
+
+
+```{r}
+plot(listing_RForest)
+```
+
+We can see that the error is decreased
+
+#### b.	Predict y_train_pred
+
+
+```{r}
+y_train_pred <- predict(listing_RForest, training_set)
+```
+
+```{r}
+mse_training <- mean((training_set$price - y_train_pred)^2)
+mae_training <- caret::MAE(training_set$price, y_train_pred)
+rmse_training <- caret::RMSE(training_set$price, y_train_pred)
+
+cat("MSE: ", mse_training, "\nMAE: ", mae_training, "\nRMSE: ", rmse_training)
+```
+
+```{r}
+RSQUARE = function(y_actual,y_predict){cor(y_actual,y_predict)^2}
+
+R2_training = RSQUARE(training_set$price,y_train_pred)
+
+cat("R^2: ", R2_training)
+```
+In the training set, R^2 is 0.86. WOW!!! This result is really high. So the model fit the training data very well.
+
+I visualize the prediction for the first 150 observations in the training set, so that I can get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, training_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for training set")
+lines(x, y_train_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original-price", "predicted-price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+We can see that it is a beautiful visualization. The blue line (our prediction) matches the red line (original price) very well.
+
+#### c. Predict y_test_pred
+
+```{r}
+y_test_pred <- predict(listing_RForest, test_set)
+```
+
+```{r}
+mse_test <- mean((test_set$price - y_test_pred)^2)
+mae_test <- caret::MAE(test_set$price, y_test_pred)
+rmse_test <- caret::RMSE(test_set$price, y_test_pred)
+
+cat("MSE: ", mse_test, "\nMAE: ", mae_test, "\nRMSE: ", rmse_test)
+```
+
+```{r}
+R2_test = RSQUARE(test_set$price, y_test_pred)
+
+cat("R^2: ", R2_test)
+```
+
+In the test set, R^2 is 0.51. It is slightly lower than the result in the training set. However, it is still greater than the results of the GLM and Decision Tree models. This is a nice outcome.
+
+I visualize the prediction for the first 150 observations in the test set to get a good understanding of the model.
+
+```{r}
+x = 1:150
+plot(x, test_set$price[1:150], xlab = "Number of observations", ylab = "Price", col = "red", type = "l", lwd=2,
+     main = "Price prediction for test set")
+lines(x, y_test_pred[1:150], col = "blue", lwd=2)
+legend("topright",  legend = c("original-price", "predicted-price"),
+       fill = c("red", "blue"), col = 2:3,  adj = c(0, 0.6))
+grid()
+```
+
+We can see that the blue line (our prediction) matches the red line (original price) quite well. So this is the best model so far.
+
+```{r}
+rm(list = ls())
+```
+
+## XII. CONCLUSION
+
+In this final project, I used the Inside Airbnb dataset to build Machine Learning models. The Inside Airbnb dataset contains approximately 1 million listings from various countries across the world. It also has 84 distinct listing characteristics. But I selected listings from Europe countries. It contains 610,718 listings and 28 useful features.
+
+In Data Import, I utilized a variety of strategies to import and validate the dataset. In Data Cleaning, I discovered missing values in the dataset and replaced them with previously recorded values. Then I assessed categorical features and converted them to numerical features. In this step, I also utilized dummy variables. Then I looked at numerical characteristics. Outliers of each characteristic were found and deleted from the dataset. Then I chose some useful characteristics to experiment with. Finally, I developed three types of Machine Learning models to predict listing prices.
+
+I made a training set and a test set with 70% and 30% of the original dataset's randomly picked observations, respectively. This random sampling was carried out without the use of any replacements. Then I created 3 models for prediction.
+
+The first model is a linear regression model based on GLM. When I tested the model with the training set and the test set, the R^2 Score are 0.22 and 0.23, respectively. They are pretty low. The model didn't fit the training data very well.
+
+The second model used Decision Tree algorithm. In the training set and test set, R^2 is about 0.3, which is higher than the result of GLM. But it's still low.
+
+The third model used Random Forest algorithm. I generated 5 trees to avoid memory overflow. In the training set, R^2 is 0.86. This result is really high. So the model fit the training data very well. In the test set, R^2 is 0.51. It is slightly lower than the result in the training set. However, it is still greater than the results of the GLM and Decision Tree models. This is a nice outcome.
